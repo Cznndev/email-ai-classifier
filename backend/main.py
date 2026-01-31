@@ -3,8 +3,8 @@ import datetime
 import json
 import io
 import re
-import requests
 import uvicorn
+import google.generativeai as genai
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pypdf import PdfReader
@@ -13,6 +13,9 @@ from schemas import ClassifyRequest, ClassifyResponse
 
 load_dotenv()
 API_KEY = os.getenv("GOOGLE_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+
+# CONFIGURAÇÃO DA SDK OFICIAL - Isso elimina o erro 404 de URL manual
+genai.configure(api_key=API_KEY)
 
 app = FastAPI()
 
@@ -35,39 +38,29 @@ def clean_json_string(text: str) -> str:
 
 @app.post("/api/classify", response_model=ClassifyResponse)
 async def classify_email(request: ClassifyRequest):
-    if not API_KEY:
-        raise HTTPException(status_code=500, detail="API Key ausente nas variáveis de ambiente.")
-
-    # Alterado para 'gemini-pro' na v1 estável - maior compatibilidade para evitar 404
-    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key={API_KEY}"
-    
-    prompt = f"""
-    Retorne APENAS um JSON:
-    {{
-        "category": "Produtivo" ou "Improdutivo",
-        "confidence": 1.0,
-        "urgency": "Alta" ou "Média" ou "Baixa",
-        "sentiment": "Positivo" ou "Neutro" ou "Negativo",
-        "summary": "Resumo curto",
-        "action_suggested": "O que fazer",
-        "entities": [],
-        "draft_response": "Texto da resposta"
-    }}
-    Analise este email: {request.emailContent}
-    """
-
-    payload = {"contents": [{"parts": [{"text": prompt}]}]}
-    
     try:
-        response = requests.post(url, json=payload, timeout=30)
+        # Usando a SDK oficial com o modelo mais estável
+        model = genai.GenerativeModel('gemini-1.5-flash')
         
-        if response.status_code != 200:
-            print(f"❌ Erro Crítico Google: {response.text}")
-            raise Exception(f"Google API Error: {response.status_code}")
+        prompt = f"""
+        Retorne APENAS um JSON válido:
+        {{
+            "category": "Produtivo" ou "Improdutivo",
+            "confidence": 1.0,
+            "urgency": "Alta",
+            "sentiment": "Positivo",
+            "summary": "Resumo",
+            "action_suggested": "Ação",
+            "entities": [],
+            "draft_response": "Resposta"
+        }}
+        Analise: {request.emailContent}
+        """
 
-        data = response.json()
-        raw_text = data["candidates"][0]["content"]["parts"][0]["text"]
-        json_result = json.loads(clean_json_string(raw_text))
+        response = model.generate_content(prompt)
+        
+        # A SDK oficial trata a conexão e a URL por baixo dos panos
+        json_result = json.loads(clean_json_string(response.text))
         
         return ClassifyResponse(
             success=True,
@@ -75,7 +68,7 @@ async def classify_email(request: ClassifyRequest):
             analyzedAt=datetime.datetime.now().isoformat()
         )
     except Exception as e:
-        print(f"❌ Erro no Processamento: {str(e)}")
+        print(f"❌ Erro na SDK: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/parse-pdf")

@@ -15,9 +15,6 @@ from schemas import ClassifyRequest, ClassifyResponse
 load_dotenv()
 API_KEY = os.getenv("GOOGLE_API_KEY") or os.environ.get("GOOGLE_API_KEY")
 
-if not API_KEY:
-    print("❌ ERRO CRÍTICO: Variável GOOGLE_API_KEY não encontrada.")
-
 app = FastAPI(title="Email AI Classifier Backend")
 
 app.add_middleware(
@@ -28,66 +25,37 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Variável para guardar o modelo escolhido
+# Variável para guardar o modelo estável escolhido
 ACTIVE_MODEL_NAME = None
 
 def get_safe_model(api_key):
     """
-    Busca modelos disponíveis e filtra APENAS os gratuitos/seguros.
-    Evita pegar modelos experimentais (2.5, exp) que dão erro de cota.
+    Filtra modelos para evitar o erro 429 visto nos logs (gemini-2.5-flash).
     """
-    print("🔍 Consultando Google para encontrar modelos GRATUITOS...")
+    print("🔍 Buscando modelos estáveis para evitar erros de cota...")
     url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
     
     try:
         response = requests.get(url)
         if response.status_code != 200:
-            print(f"⚠️ Erro ao listar: {response.status_code}. Usando fallback.")
             return "gemini-1.5-flash"
             
         data = response.json()
-        candidates = []
-        
-        # Limpa os nomes (tira o prefixo 'models/')
-        for m in data.get('models', []):
-            if 'generateContent' in m.get('supportedGenerationMethods', []):
-                name = m['name'].replace('models/', '')
-                candidates.append(name)
-                print(f"   - Disponível: {name}")
+        candidates = [m['name'].replace('models/', '') for m in data.get('models', []) 
+                     if 'generateContent' in m.get('supportedGenerationMethods', [])]
 
-        # --- LÓGICA DE SELEÇÃO ESTRITA ---
-        # Ordem de preferência: Flash (Rápido/Gratis) -> 1.5 Pro -> 1.0 Pro
-        # IGNORA modelos experimentais ou muito novos que não têm free tier
+        # LISTA DE PRIORIDADE: Ignora '2.5' e 'experimental' para evitar erro 429
+        # Baseado no log: gemini-2.5-flash deu erro de cota (limit 0)
+        priority = ["gemini-1.5-flash", "gemini-1.5-flash-001", "gemini-1.0-pro"]
         
-        keywords_priority = [
-            "gemini-1.5-flash",      # O melhor para esse app
-            "gemini-1.5-pro-001",    # Estável
-            "gemini-1.0-pro"         # O clássico indestrutível
-        ]
+        for p in priority:
+            if p in candidates:
+                print(f"✅ Selecionado modelo estável: {p}")
+                return p
         
-        for keyword in keywords_priority:
-            for cand in candidates:
-                # Se o candidato contém a palavra chave E NÃO É experimental
-                if keyword in cand and "experimental" not in cand and "2.5" not in cand:
-                    print(f"✅ MODELO SEGURO ESCOLHIDO: {cand}")
-                    return cand
-        
-        # Se não achou nenhum perfeito, tenta qualquer Flash
-        for cand in candidates:
-            if "flash" in cand and "8b" not in cand: # 8b as vezes é restrito
-                 print(f"⚠️ Modelo alternativo escolhido: {cand}")
-                 return cand
-
-        # Se tudo der errado, chuta o flash padrão
         return "gemini-1.5-flash"
-        
-    except Exception as e:
-        print(f"❌ Erro na seleção: {e}")
+    except:
         return "gemini-1.5-flash"
-
-# Inicializa
-if API_KEY:
-    ACTIVE_MODEL_NAME = get_safe_model(API_KEY)
 
 def clean_json_string(text: str) -> str:
     text = re.sub(r'```json\s*', '', text)
@@ -98,80 +66,47 @@ def clean_json_string(text: str) -> str:
         text = text[start:end]
     return text.strip()
 
-def classify_email_http(email_content: str, api_key: str, model_name: str):
-    headers = {"Content-Type": "application/json"}
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-    
-    prompt = f"""
-    Analise este email e responda APENAS um JSON válido.
-    {{
-        "category": "Produtivo" ou "Improdutivo",
-        "confidence": 0.9,
-        "urgency": "Alta" ou "Média" ou "Baixa",
-        "sentiment": "Positivo" ou "Neutro" ou "Negativo",
-        "summary": "Resumo",
-        "action_suggested": "Ação",
-        "entities": ["Entidade"],
-        "draft_response": "Resposta"
-    }}
-    EMAIL:
-    {email_content}
-    """
-    
-    payload = {"contents": [{"parts": [{"text": prompt}]}]}
-    
-    print(f"🚀 Enviando para {model_name}...")
-    response = requests.post(url, headers=headers, json=payload, timeout=30)
-    
-    if response.status_code == 200:
-        return response.json()["candidates"][0]["content"]["parts"][0]["text"]
-    elif response.status_code == 429:
-        raise Exception("Erro de Cota (429). O modelo escolhido está lotado.")
-    else:
-        raise Exception(f"Erro Google {response.status_code}: {response.text}")
-
 @app.post("/api/parse-pdf")
 async def parse_pdf(file: UploadFile = File(...)):
     try:
         contents = await file.read()
         pdf_file = io.BytesIO(contents)
         reader = PdfReader(pdf_file)
-        text = ""
-        for page in reader.pages:
-            text += page.extract_text() + "\n"
+        text = "".join([page.extract_text() + "\n" for page in reader.pages])
         return {"text": text}
-    except Exception as e:
-        print(f"❌ Erro PDF: {e}")
-        raise HTTPException(status_code=500, detail="Erro ao ler PDF")
+    except:
+        raise HTTPException(status_code=500, detail="Erro no PDF")
 
 @app.post("/api/classify", response_model=ClassifyResponse)
 async def classify_email(request: ClassifyRequest):
     try:
-        print(f"\n--- 📩 Processando Email ---")
-        
         global ACTIVE_MODEL_NAME
         if not ACTIVE_MODEL_NAME:
             ACTIVE_MODEL_NAME = get_safe_model(API_KEY)
-            
-        raw_response = classify_email_http(request.emailContent, API_KEY, ACTIVE_MODEL_NAME)
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{ACTIVE_MODEL_NAME}:generateContent?key={API_KEY}"
         
-        cleaned_text = clean_json_string(raw_response)
-        json_result = json.loads(cleaned_text)
+        prompt = f"Analise o email e retorne APENAS um JSON: {{'category': 'Produtivo'|'Improdutivo', 'confidence': 0.9, 'urgency': 'Alta'|'Média'|'Baixa', 'sentiment': 'Positivo'|'Neutro'|'Negativo', 'summary': 'Resumo', 'action_suggested': 'Ação', 'entities': [], 'draft_response': 'Resposta'}}. EMAIL: {request.emailContent}"
         
-        print(f"✅ Sucesso! {json_result.get('category')}")
+        payload = {"contents": [{"parts": [{"text": prompt}]}]}
+        response = requests.post(url, json=payload, timeout=30)
+        
+        if response.status_code != 200:
+            # Se o modelo atual falhar (ex: erro 429), tenta resetar para a próxima
+            ACTIVE_MODEL_NAME = None 
+            raise Exception(f"Erro na API: {response.status_code}")
+
+        raw_text = response.json()["candidates"][0]["content"]["parts"][0]["text"]
+        json_result = json.loads(clean_json_string(raw_text))
         
         return ClassifyResponse(
             success=True,
             result=json_result,
             analyzedAt=datetime.datetime.now().isoformat()
         )
-
     except Exception as e:
         print(f"❌ ERRO: {e}")
-        # Se der cota ou 404, reseta para tentar achar outro modelo na próxima vez
-        if "429" in str(e) or "404" in str(e):
-            ACTIVE_MODEL_NAME = None
-        raise HTTPException(status_code=500, detail=f"Erro interno: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

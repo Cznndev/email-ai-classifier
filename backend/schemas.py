@@ -6,7 +6,6 @@ class ClassifyRequest(BaseModel):
     emailContent: str
 
 # Modelo para o resultado da IA (IA -> Backend)
-# Este modelo deve ser IDÊNTICO ao JSON que pedimos no prompt do main.py
 class ClassificationResult(BaseModel):
     category: str
     confidence: float          # Mudamos de int para float (aceita 0.95)

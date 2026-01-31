@@ -1,49 +1,23 @@
-from pydantic import BaseModel, Field
-from typing import List, Literal
+from pydantic import BaseModel
+from typing import List, Optional, Any
 
-# --- Sub-modelos ---
-
-class Sentiment(BaseModel):
-    tone: Literal["Urgente", "Formal", "Amigavel", "Neutro", "Critico"]
-    urgency: Literal["Baixa", "Media", "Alta", "Critica"]
-
-class Entity(BaseModel):
-    people: List[str] = Field(description="Nomes de pessoas mencionadas")
-    dates: List[str] = Field(description="Datas mencionadas")
-    values: List[str] = Field(description="Valores monetarios ou numericos importantes")
-    organizations: List[str] = Field(description="Empresas ou organizacoes mencionadas")
-
-class SuggestedAction(BaseModel):
-    action: str
-    priority: Literal["Baixa", "Media", "Alta"]
-
-# --- Modelo Principal de Resultado ---
-
-class ClassificationResult(BaseModel):
-    category: Literal["Produtivo", "Improdutivo"]
-    # AQUI ESTAVA O ERRO: Removemos o Field(ge=0, le=100) e deixamos apenas int
-    confidence: int = Field(description="Nivel de confianca de 0 a 100")
-    
-    sentiment: Sentiment
-    emailType: Literal[
-        'Solicitacao', 'Follow-up', 'Informativo', 'Reclamacao',
-        'Agradecimento', 'Convite', 'Notificacao', 'Outro'
-    ]
-    tags: List[str]
-    entities: Entity
-    reasoning: str
-    keyPoints: List[str]
-    suggestedActions: List[SuggestedAction]
-    suggestedResponse: str
-    estimatedResponseTime: str
-    complexity: Literal["Simples", "Moderada", "Complexa"]
-
-# --- Request e Response da API ---
-
+# Modelo para receber o pedido (Frontend -> Backend)
 class ClassifyRequest(BaseModel):
     emailContent: str
-    fileName: str | None = None
 
+# Modelo para o resultado da IA (IA -> Backend)
+# Este modelo deve ser IDÊNTICO ao JSON que pedimos no prompt do main.py
+class ClassificationResult(BaseModel):
+    category: str
+    confidence: float          # Mudamos de int para float (aceita 0.95)
+    urgency: str
+    sentiment: str             # Mudamos para str simples
+    summary: str
+    action_suggested: str      # Ajustado para o nome que está no prompt
+    entities: List[str]        # Lista de strings simples
+    draft_response: str
+
+# Modelo final da resposta (Backend -> Frontend)
 class ClassifyResponse(BaseModel):
     success: bool
     result: ClassificationResult

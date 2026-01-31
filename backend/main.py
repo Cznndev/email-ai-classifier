@@ -3,27 +3,23 @@ import datetime
 import json
 import io
 import re
+import time
 import uvicorn
 import google.generativeai as genai
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pypdf import PdfReader
 from dotenv import load_dotenv
+from google.api_core import exceptions as google_exceptions
 
-# Importando os schemas
 from schemas import ClassifyRequest, ClassifyResponse, ClassificationResult
 
 # --- CONFIGURAÇÃO ---
 load_dotenv()
-
-# Tenta pegar a chave de várias formas para garantir
 API_KEY = os.getenv("GOOGLE_API_KEY") or os.environ.get("GOOGLE_API_KEY")
 
 if not API_KEY:
-    print("❌ ERRO CRÍTICO: Variável GOOGLE_API_KEY não encontrada.")
-    # Não vamos travar o app aqui para permitir debug nos logs
-else:
-    print(f"🔑 API Key encontrada: {API_KEY[:5]}...******")
+    print("❌ ERRO: Sem API KEY.")
 
 genai.configure(api_key=API_KEY)
 
@@ -37,41 +33,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- FUNÇÃO INTELIGENTE PARA ESCOLHER O MODELO ---
-def get_best_model():
-    """
-    Lista os modelos disponíveis na conta e escolhe o melhor.
-    Isso evita o erro 404 se o nome mudar na região do servidor.
-    """
-    try:
-        print("\n🔍 Buscando modelos disponíveis na sua conta...")
-        available_models = []
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                available_models.append(m.name)
-                print(f"   - Encontrado: {m.name}")
-        
-        # Prioridade de escolha
-        for model_name in available_models:
-            if 'gemini-1.5-flash' in model_name: return model_name
-        
-        for model_name in available_models:
-            if 'gemini-pro' in model_name: return model_name
-            
-        # Se não achou nenhum conhecido, pega o primeiro da lista
-        if available_models:
-            return available_models[0]
-            
-        return 'gemini-pro' # Última esperança
-        
-    except Exception as e:
-        print(f"⚠️ Erro ao listar modelos (Provável erro de Chave API): {e}")
-        return 'gemini-pro'
-
-# Define o modelo dinamicamente
-selected_model_name = get_best_model()
-print(f"🏆 Modelo Selecionado para uso: {selected_model_name}\n")
-model = genai.GenerativeModel(selected_model_name)
+# Lista de modelos para tentar (do mais novo/rápido para o mais antigo/compatível)
+MODEL_CANDIDATES = [
+    'gemini-1.5-flash',
+    'gemini-1.5-flash-latest',
+    'gemini-1.5-pro',
+    'gemini-pro',
+    'gemini-1.0-pro'
+]
 
 def clean_json_string(text: str) -> str:
     text = re.sub(r'```json\s*', '', text)
@@ -81,6 +50,32 @@ def clean_json_string(text: str) -> str:
     if start != -1 and end != -1:
         text = text[start:end]
     return text.strip()
+
+def try_generate_content(prompt):
+    """
+    Tenta gerar conteúdo usando uma lista de modelos.
+    Se um falhar (404 ou 429), pula para o próximo.
+    """
+    last_error = None
+    
+    for model_name in MODEL_CANDIDATES:
+        try:
+            print(f"🔄 Tentando modelo: {model_name}...")
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(prompt)
+            print(f"✅ Sucesso com o modelo: {model_name}")
+            return response
+        except Exception as e:
+            error_msg = str(e)
+            print(f"⚠️ Falha no modelo {model_name}: {error_msg}")
+            
+            # Se for erro de cota (429) ou não encontrado (404), continua.
+            # Se for outro erro, talvez valha a pena continuar também.
+            last_error = e
+            time.sleep(1) # Espera 1seg antes de tentar o próximo
+            
+    # Se sair do loop, todos falharam
+    raise last_error
 
 @app.post("/api/parse-pdf")
 async def parse_pdf(file: UploadFile = File(...)):
@@ -99,11 +94,10 @@ async def parse_pdf(file: UploadFile = File(...)):
 @app.post("/api/classify", response_model=ClassifyResponse)
 async def classify_email(request: ClassifyRequest):
     try:
-        print(f"\n--- 📩 Processando Email ---")
+        print(f"\n--- 📩 Processando Email (Modo Robusto) ---")
         
         prompt = f"""
-        Você é um classificador de emails. Responda APENAS com JSON.
-        Formato obrigatório:
+        Analise o email e responda APENAS com JSON.
         {{
             "category": "Produtivo" ou "Improdutivo",
             "confidence": 0.9,
@@ -114,16 +108,15 @@ async def classify_email(request: ClassifyRequest):
             "entities": ["Entidade1"],
             "draft_response": "Resposta"
         }}
-
         EMAIL:
         {request.emailContent}
         """
 
-        response = model.generate_content(prompt)
+        # Usa a função de tentativa e erro
+        response = try_generate_content(prompt)
+        
         cleaned_text = clean_json_string(response.text)
         json_result = json.loads(cleaned_text)
-        
-        print(f"✅ Classificado: {json_result.get('category')}")
         
         return ClassifyResponse(
             success=True,
@@ -132,8 +125,8 @@ async def classify_email(request: ClassifyRequest):
         )
 
     except Exception as e:
-        print(f"❌ ERRO: {e}")
-        raise HTTPException(status_code=500, detail=f"Erro no servidor: {str(e)}")
+        print(f"❌ ERRO FATAL: Todos os modelos falharam. {e}")
+        raise HTTPException(status_code=500, detail=f"Erro no processamento de IA: {str(e)}")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

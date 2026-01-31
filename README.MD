@@ -1,99 +1,141 @@
-# 📧 EmailAI - Classificador Inteligente de Emails
+# 🧠 EmailAI — Classificador Inteligente de Emails com IA
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Python](https://img.shields.io/badge/backend-FastAPI-009688.svg)
-![Frontend](https://img.shields.io/badge/frontend-Next.js-black.svg)
-![AI](https://img.shields.io/badge/AI-Google%20Gemini-orange.svg)
-
-> Uma solução Fullstack moderna para triagem automática de emails corporativos, capaz de ler PDFs, analisar sentimentos e sugerir respostas usando Inteligência Artificial Generativa.
+> 🚀 Solução Fullstack moderna para automação e triagem inteligente de e-mails corporativos, com leitura de PDFs, análise semântica e geração de respostas usando Inteligência Artificial Generativa.
 
 ---
 
-## 📸 Demonstração
+## 📌 Sobre o Projeto
 
-![Interface do Projeto](./public/demo-screenshot.png)
-
-## 🚀 Funcionalidades
-
-- **🧠 Classificação Inteligente:** Identifica automaticamente se um email é `Produtivo` ou `Improdutivo`.
-- **📄 Leitura de PDF:** Suporte nativo para upload e extração de texto de arquivos PDF.
-- **📊 Análise Profunda:** Detecta urgência, tom de voz (sentimento) e extrai entidades (Nomes, Datas, Valores).
-- **✍️ Resposta Automática:** A IA redige uma sugestão de resposta profissional baseada no contexto.
-- **⚡ Arquitetura Moderna:** Frontend reativo em Next.js e Backend robusto em Python/FastAPI.
-
-## 🛠️ Tecnologias Utilizadas
-
-### Frontend
-- **Framework:** Next.js 14 (App Router)
-- **Estilização:** Tailwind CSS + Shadcn/ui
-- **Ícones:** Lucide React
-- **Linguagem:** TypeScript
-
-### Backend
-- **Framework:** FastAPI (Python)
-- **IA:** Google Gemini 1.5 Flash (via Google Generative AI SDK)
-- **Processamento de Arquivos:** PyPDF
-- **Servidor:** Uvicorn
+O **EmailAI** é uma aplicação inovadora que classifica automaticamente e-mails em categorias como **Produtivo** ou **Improdutivo**, extrai insights semânticos (como urgência e sentimento) e sugere respostas profissionais baseadas no contexto da mensagem.  
+Essa solução foi desenvolvida para demonstrar habilidades práticas em **IA generativa, desenvolvimento backend e frontend moderno**, arquitetura de microsserviços e integração com APIs avançadas — tornando-a uma excelente peça de portfólio para oportunidades em TI, Machine Learning e Engenharia de Software.
 
 ---
 
-## 📦 Como Rodar o Projeto
+## 🔥 Recursos Principais
 
-Siga os passos abaixo para rodar a aplicação em seu ambiente local.
+✔️ **Classificação Inteligente de Emails** — Identificação automática do tipo de mensagem (produtiva vs improdutiva) com precisão.  
+📄 **Leitura de PDFs** — Upload e extração de texto em arquivos PDF.  
+🧠 **Análise Profunda** — Detecção de sentimento, urgência, entidades como datas e nomes.  
+✍️ **Respostas Automatizadas** — Sugestões de resposta geradas pela IA com tom profissional.  
+⚡ **Arquitetura Fullstack** — Frontend em Next.js e backend em Python com FastAPI — tecnologias amplamente utilizadas no mercado.  
+📊 **Design para Produção** — Variáveis de ambiente protegidas, configuração para local development, e fácil escalabilidade.
 
-### Pré-requisitos
-- Node.js (v18+)
-- Python (v3.10+)
+---
 
-### 1. Configuração do Backend (API)
+## 🛠 Tecnologias Utilizadas
+
+### 🧩 Frontend
+| Tecnologia | Finalidade |
+|------------|------------|
+| **Next.js 14** | Framework React moderno (SSR e otimizações) |
+| **TypeScript** | Tipagem estática para maior qualidade de código |
+| **Tailwind CSS + Shadcn/ui** | Estilização moderna e produtiva |
+| **Lucide React** | Ícones leves e consistentes |
+
+### ⚙️ Backend
+| Tecnologia | Finalidade |
+|------------|------------|
+| **FastAPI (Python)** | API backend de alta performance |
+| **Google Gemini 1.5 Flash** | Modelo de IA para classificação e respostas |
+| **PyPDF** | Extração de texto em PDFs |
+| **Uvicorn** | Servidor ASGI rápido |
+| **Variáveis de Ambiente** | Segurança de chaves sensíveis |
+
+---
+
+## 🚀 Demonstração
+
+> 🖼️ Inserir GIF ou screenshot da interface aqui (opcional, mas recomendado para impacto visual).
+
+---
+
+## 📥 Instalação e Configuração
+
+### 🧾 Pré-requisitos
+
+Antes de começar, instale o seguinte:
+
+- **Node.js** (v18+)
+- **Python** (v3.10+)
+- Gerenciador de pacotes: `npm` ou `pnpm`
+
+---
+
+### 🏗️ Backend
 
 ```bash
-# Entre na pasta do backend
+# 1. Entre na pasta do backend
 cd backend
 
-# Crie um ambiente virtual (Opcional, mas recomendado)
+# 2. Crie e ative ambiente virtual (opcional)
 python -m venv venv
-# Ative o venv:
-# Windows: venv\Scripts\activate
-# Linux/Mac: source venv/bin/activate
+# no macOS/Linux
+source venv/bin/activate
+# no Windows
+venv\Scripts\activate
 
-# Instale as dependências
+# 3. Instale dependências
 pip install -r requirements.txt
 
-# Configure a chave de API
-# 1. Crie um arquivo .env na pasta backend
-# 2. Adicione sua chave: GOOGLE_API_KEY="sua_chave_aqui"
+# 4. Configure a chave de IA
+# Crie um arquivo .env e adicione:
+GOOGLE_API_KEY="sua_chave_aqui"
 
-# Inicie o servidor
+# 5. Execute o servidor
 python main.py
-O servidor iniciará em http://localhost:8000
 
-2. Configuração do Frontend (Interface)
-Bash
+👉 A API será executada em: http://localhost:8000
+```
 
-# Em um novo terminal, volte para a raiz do projeto (se estiver na pasta backend)
-cd ..
+### 🌐 Frontend
 
-# Instale as dependências do Node.js
+```bash
+# No diretório raiz do projeto
 npm install
 
-# Inicie o servidor de desenvolvimento
+# Iniciar aplicação
 npm run dev
-Acesse a aplicação em http://localhost:3000
 
-🔒 Segurança
-Este projeto utiliza variáveis de ambiente para proteger chaves sensíveis.
+👉 Acesse a interface em: http://localhost:3000
+```
 
-O arquivo .env contendo a GOOGLE_API_KEY não é enviado para o GitHub.
+🧩 Arquitetura do Projetoemail-ai-classifier/
+```bash
+├── backend/              # API em Python com classificação IA
+├── app/                  # Frontend Next.js (UI)
+├── components/           # Componentes React reutilizáveis
+├── hooks/                # Hooks personalizados
+├── public/               # Imagens, ícones e assets
+├── styles/               # Estilos base
+├── README.MD             # Documentação principal
+└── package.json          # Configurações do frontend
+```
 
-Utilize o arquivo .env.example como referência para criar sua própria configuração localmente.
+💡 Decisões Técnicas & Diferença do Projeto
 
-🧪 Decisões Técnicas
-Google Gemini 1.5 Flash: Escolhido por ser um modelo leve, rápido e com excelente janela de contexto, ideal para classificação de texto em tempo real sem custos elevados.
+✔ Uso de FastAPI para APIs assíncronas e documentação automática.
+✔ Integração com Google Gemini para classificação de texto em tempo real, sem necessidade de treinar modelos do zero.
+✔ Frontend responsivo e moderno com Next.js + Tailwind CSS.
+✔ Projeto pronto para evolução (ex.: deploy, autenticação, análise avançada).
 
-FastAPI: Utilizado pela sua performance (assíncrona) e pela facilidade de criar documentação automática, além de ser o padrão de mercado para microsserviços de IA em Python.
+🛠 Funcionalidades Futuras (Roadmap)
 
-Next.js 14: Garante uma interface reativa, otimizada e moderna, com renderização do lado do servidor (SSR) para melhor performance.
+✨ Autenticação de usuários (login com OAuth).
+✨ Dashboard com estatísticas de classificação.
+✨ Suporte a múltiplos idiomas.
+✨ Integração com provedores de email reais (IMAP/SMTP).
+✨ Versionamento de modelos de IA.
+
+📈 Impacto e Aplicações
+
+Essa solução pode ser usada em ambientes corporativos para automatizar triagem de emails, melhorar produtividade de equipes, reduzir sobrecarga manual de leitura e fornecer insights valiosos com IA — destacando proficiência em soluções modernas e orientadas a produto.
 
 👨‍💻 Autor
-Desenvolvido por Caio Higino De Oliveira
+
+Desenvolvido por Caio Higino de Oliveira
+
+
+📄 Licença
+
+Este projeto está licenciado sob a MIT License.
+Consulte o arquivo LICENSE para mais detalhes.

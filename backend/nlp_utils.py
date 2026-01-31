@@ -1,43 +1,25 @@
-import nltk
-from nltk.corpus import stopwords
-from nltk.stem import RSLPStemmer
-from nltk.tokenize import word_tokenize
+import re
 import string
 
-# Baixa os dicionários necessários na primeira execução
-try:
-    nltk.data.find('tokenizers/punkt')
-except LookupError:
-    nltk.download('punkt')
-    nltk.download('stopwords')
-    nltk.download('rslp')
-    nltk.download('punkt_tab')
+# NLTK foi removido para evitar erros de download (Erro 403)
+# O Gemini funciona muito bem (até melhor) com o texto original.
 
 def preprocess_text(text: str) -> str:
     """
-    Realiza o pré-processamento do texto:
-    1. Tokenização
-    2. Remoção de pontuação e números soltos
-    3. Remoção de Stop Words
-    4. Stemming (redução à raiz)
+    Realiza uma limpeza básica no texto sem depender de bibliotecas externas.
     """
     if not text:
         return ""
 
-    # 1. Tokenização e conversão para minúsculas
-    tokens = word_tokenize(text.lower(), language='portuguese')
+    # 1. Conversão para minúsculas
+    text = text.lower()
     
-    # 2. Remoção de pontuação
-    tokens = [word for word in tokens if word.isalnum()]
+    # 2. Remover caracteres estranhos/pontuação (mantém letras e números)
+    # Regex simples para limpar sujeira
+    text = re.sub(r'[^\w\s]', ' ', text)
     
-    # 3. Remoção de Stop Words
-    stop_words = set(stopwords.words('portuguese'))
-    tokens = [word for word in tokens if word not in stop_words]
+    # 3. Remover espaços duplos criados pela remoção acima
+    # Exemplo: "ola   mundo" vira "ola mundo"
+    clean_text = " ".join(text.split())
     
-    # 4. Stemming (Opcional - mantido para cumprir requisito de NLP)
-    # Nota: Para o Gemini, o texto completo muitas vezes é melhor, 
-    # mas geramos essa versão processada para logs ou análises estatísticas.
-    stemmer = RSLPStemmer()
-    stemmed_tokens = [stemmer.stem(word) for word in tokens]
-    
-    return " ".join(tokens)
+    return clean_text

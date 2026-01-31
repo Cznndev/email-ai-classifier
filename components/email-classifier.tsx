@@ -79,7 +79,7 @@ export function EmailClassifier() {
     }
     setLoading(true)
     setError(null)
-    setShowActionTooltip(false) // Reseta o tooltip
+    setShowActionTooltip(false) 
     
     try {
       const response = await fetch(`${API_BASE}/api/classify`, {
@@ -237,8 +237,13 @@ export function EmailClassifier() {
 
         {result && (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6">
-            <Card className="overflow-hidden border-border/50 bg-card/50 backdrop-blur-sm shadow-xl relative">
-              <div className={`h-1.5 w-full ${result.category === "Produtivo" ? "bg-success" : "bg-warning"}`} />
+            {/* ATENÇÃO AQUI: 
+               Removi 'overflow-hidden' para o balão não cortar.
+               Adicionei 'relative' e 'z-0' para contexto de pilha.
+            */}
+            <Card className="border-border/50 bg-card/50 backdrop-blur-sm shadow-xl relative z-0">
+              {/* Barra colorida com rounded-t-xl para não ficar quadrada */}
+              <div className={`h-1.5 w-full rounded-t-xl ${result.category === "Produtivo" ? "bg-success" : "bg-warning"}`} />
               <CardHeader className="pb-4">
                 <div className="flex items-start justify-between">
                   <div>
@@ -262,7 +267,7 @@ export function EmailClassifier() {
                   </div>
                 </div>
               </CardHeader>
-              <CardContent className="grid gap-4 md:grid-cols-3 items-start">
+              <CardContent className="grid gap-4 md:grid-cols-3 items-start relative">
                 <div className="rounded-lg bg-muted/30 p-3 border border-border/50">
                   <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Urgência</span>
                   <div className="flex items-center gap-2 mt-1">
@@ -279,7 +284,7 @@ export function EmailClassifier() {
                   <div className="mt-1 font-semibold">{result.sentiment}</div>
                 </div>
                 
-                {/* --- BOTÃO DE AÇÃO COM POPOVER --- */}
+                {/* --- BOTÃO DE AÇÃO COM CORREÇÃO DE CORTE --- */}
                 <div 
                   className="relative rounded-lg bg-muted/30 p-3 border border-border/50 cursor-pointer transition-all hover:bg-muted/50 hover:border-primary/20 group select-none"
                   onClick={() => setShowActionTooltip(!showActionTooltip)}
@@ -288,12 +293,14 @@ export function EmailClassifier() {
                     <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Ação Sugerida</span>
                     <Info className="h-3 w-3 text-muted-foreground/50 group-hover:text-primary transition-colors" />
                   </div>
-                  {/* Texto cortado (Layout bonito) */}
                   <div className="mt-1 font-semibold truncate text-sm">
                     {result.action_suggested}
                   </div>
 
-                  {/* O Balão Flutuante (Aparece ao clicar) */}
+                  {/* O Balão Flutuante:
+                     - z-50 para ficar acima de tudo
+                     - Removido overflow do pai, agora ele vai vazar para fora do card
+                  */}
                   {showActionTooltip && (
                     <div className="absolute top-full right-0 mt-2 w-[280px] sm:w-[350px] z-50 p-4 rounded-xl border bg-popover text-popover-foreground shadow-2xl animate-in fade-in zoom-in-95 ring-1 ring-border">
                        <div className="flex justify-between items-start mb-2">
@@ -309,7 +316,7 @@ export function EmailClassifier() {
               </CardContent>
             </Card>
 
-            <Tabs defaultValue="response" className="w-full">
+            <Tabs defaultValue="response" className="w-full relative z-0">
               <TabsList className="grid w-full grid-cols-2 bg-muted/30">
                 <TabsTrigger value="response">Sugestão de Resposta</TabsTrigger>
                 <TabsTrigger value="details">Entidades e Detalhes</TabsTrigger>

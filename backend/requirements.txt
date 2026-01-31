@@ -4,3 +4,4 @@ python-multipart
 google-generativeai>=0.7.2
 python-dotenv
 pypdf
+requests

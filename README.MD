@@ -50,7 +50,7 @@ Essa solução foi desenvolvida para demonstrar habilidades práticas em **IA ge
 </p>
 
 <p align="center">
-  <img src="public/demonstracao3.png" alt="Classificação de emails com IA" width="800"/>
+  <img src="public/demonstracao3.jpg" alt="Classificação de emails com IA" width="800"/>
 </p>
 
 ---

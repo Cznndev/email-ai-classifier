@@ -13,17 +13,17 @@ from dotenv import load_dotenv
 # Importando os schemas
 from schemas import ClassifyRequest, ClassifyResponse, ClassificationResult
 
-# --- CONFIGURAÇÃO DE SEGURANÇA (.ENV) ---
+# --- CONFIGURAÇÃO ---
 load_dotenv()
-API_KEY = os.getenv("GOOGLE_API_KEY")
 
-if not API_KEY:
-    # Tenta pegar do ambiente do sistema (caso o .env falhe no Render)
-    API_KEY = os.environ.get("GOOGLE_API_KEY")
+# Tenta pegar a chave de várias formas para garantir
+API_KEY = os.getenv("GOOGLE_API_KEY") or os.environ.get("GOOGLE_API_KEY")
 
 if not API_KEY:
     print("❌ ERRO CRÍTICO: Variável GOOGLE_API_KEY não encontrada.")
-    raise ValueError("A chave de API não foi configurada!")
+    # Não vamos travar o app aqui para permitir debug nos logs
+else:
+    print(f"🔑 API Key encontrada: {API_KEY[:5]}...******")
 
 genai.configure(api_key=API_KEY)
 
@@ -37,15 +37,45 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# MUDANÇA 1: Usando o modelo mais estável (gemini-pro)
-model = genai.GenerativeModel('gemini-pro')
+# --- FUNÇÃO INTELIGENTE PARA ESCOLHER O MODELO ---
+def get_best_model():
+    """
+    Lista os modelos disponíveis na conta e escolhe o melhor.
+    Isso evita o erro 404 se o nome mudar na região do servidor.
+    """
+    try:
+        print("\n🔍 Buscando modelos disponíveis na sua conta...")
+        available_models = []
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                available_models.append(m.name)
+                print(f"   - Encontrado: {m.name}")
+        
+        # Prioridade de escolha
+        for model_name in available_models:
+            if 'gemini-1.5-flash' in model_name: return model_name
+        
+        for model_name in available_models:
+            if 'gemini-pro' in model_name: return model_name
+            
+        # Se não achou nenhum conhecido, pega o primeiro da lista
+        if available_models:
+            return available_models[0]
+            
+        return 'gemini-pro' # Última esperança
+        
+    except Exception as e:
+        print(f"⚠️ Erro ao listar modelos (Provável erro de Chave API): {e}")
+        return 'gemini-pro'
+
+# Define o modelo dinamicamente
+selected_model_name = get_best_model()
+print(f"🏆 Modelo Selecionado para uso: {selected_model_name}\n")
+model = genai.GenerativeModel(selected_model_name)
 
 def clean_json_string(text: str) -> str:
-    """Limpa a resposta da IA para garantir que seja um JSON válido"""
-    # Remove crases de markdown
     text = re.sub(r'```json\s*', '', text)
     text = re.sub(r'```\s*', '', text)
-    # Remove qualquer texto antes da primeira { ou depois da última }
     start = text.find('{')
     end = text.rfind('}') + 1
     if start != -1 and end != -1:
@@ -61,7 +91,6 @@ async def parse_pdf(file: UploadFile = File(...)):
         text = ""
         for page in reader.pages:
             text += page.extract_text() + "\n"
-        print(f"📄 PDF Processado: {len(text)} caracteres")
         return {"text": text}
     except Exception as e:
         print(f"❌ Erro PDF: {e}")
@@ -70,40 +99,31 @@ async def parse_pdf(file: UploadFile = File(...)):
 @app.post("/api/classify", response_model=ClassifyResponse)
 async def classify_email(request: ClassifyRequest):
     try:
-        print(f"\n--- 📩 Processando Email (Modelo: gemini-pro) ---")
+        print(f"\n--- 📩 Processando Email ---")
         
-        # MUDANÇA 2: Prompt reforçado para garantir JSON (já que tiramos a config automática)
         prompt = f"""
-        Você é um classificador de emails corporativos.
-        Analise o email abaixo e responda ESTRITAMENTE com um objeto JSON.
-        NÃO escreva nada além do JSON. Não use Markdown.
-        
-        O JSON deve seguir exatamente este formato:
+        Você é um classificador de emails. Responda APENAS com JSON.
+        Formato obrigatório:
         {{
             "category": "Produtivo" ou "Improdutivo",
             "confidence": 0.9,
             "urgency": "Alta" ou "Média" ou "Baixa",
             "sentiment": "Positivo" ou "Neutro" ou "Negativo",
-            "summary": "Resumo em 1 frase",
-            "action_suggested": "Ação recomendada",
-            "entities": ["Nome", "Empresa", "Data"],
-            "draft_response": "Sugestão de resposta curta e formal"
+            "summary": "Resumo rápido",
+            "action_suggested": "Ação",
+            "entities": ["Entidade1"],
+            "draft_response": "Resposta"
         }}
 
-        EMAIL PARA ANALISAR:
+        EMAIL:
         {request.emailContent}
         """
 
-        # Chamada simplificada (sem generation_config que quebra o gemini-pro)
         response = model.generate_content(prompt)
-
-        # Limpeza e Conversão
         cleaned_text = clean_json_string(response.text)
-        print(f"🤖 Resposta da IA: {cleaned_text[:50]}...") # Log para debug
-        
         json_result = json.loads(cleaned_text)
         
-        print(f"✅ Classificado como: {json_result.get('category', 'Desconhecido')}")
+        print(f"✅ Classificado: {json_result.get('category')}")
         
         return ClassifyResponse(
             success=True,
@@ -112,10 +132,8 @@ async def classify_email(request: ClassifyRequest):
         )
 
     except Exception as e:
-        print(f"❌ ERRO NA CLASSIFICAÇÃO: {e}")
-        if "429" in str(e):
-            raise HTTPException(status_code=429, detail="Muitas requisições. Aguarde.")
-        raise HTTPException(status_code=500, detail=f"Erro interno: {str(e)}")
+        print(f"❌ ERRO: {e}")
+        raise HTTPException(status_code=500, detail=f"Erro no servidor: {str(e)}")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

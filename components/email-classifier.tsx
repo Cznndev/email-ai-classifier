@@ -3,7 +3,7 @@
 import { useState, useRef } from "react"
 import { 
   Loader2, Send, FileText, Upload, CheckCircle2, 
-  AlertCircle, Copy, Check, RefreshCcw, History, Clock 
+  AlertCircle, Copy, Check, RefreshCcw, History, Clock, Info, X
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -41,6 +41,10 @@ export function EmailClassifier() {
   const [history, setHistory] = useState<HistoryItem[]>([])
   const [fileName, setFileName] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  
+  // Novo estado para controlar o balão da ação
+  const [showActionTooltip, setShowActionTooltip] = useState(false)
+  
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -75,6 +79,7 @@ export function EmailClassifier() {
     }
     setLoading(true)
     setError(null)
+    setShowActionTooltip(false) // Reseta o tooltip
     
     try {
       const response = await fetch(`${API_BASE}/api/classify`, {
@@ -91,7 +96,6 @@ export function EmailClassifier() {
         const newResult = data.result
         setResult(newResult)
         
-        // Adiciona ao Histórico
         const newItem: HistoryItem = {
           id: Date.now().toString(),
           date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -112,6 +116,7 @@ export function EmailClassifier() {
 
   const loadHistoryItem = (item: HistoryItem) => {
     setResult(item.result)
+    setShowActionTooltip(false)
   }
 
   const copyResponse = () => {
@@ -127,12 +132,13 @@ export function EmailClassifier() {
     setResult(null)
     setError(null)
     setFileName(null)
+    setShowActionTooltip(false)
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
   return (
     <div className="grid gap-8 lg:grid-cols-3">
-      {/* Coluna Esquerda: Entrada + Histórico */}
+      {/* Coluna Esquerda */}
       <div className="lg:col-span-1 space-y-6">
         <Card className="border-border/50 bg-card/50 backdrop-blur-sm shadow-sm">
           <CardHeader>
@@ -170,7 +176,6 @@ export function EmailClassifier() {
           </CardFooter>
         </Card>
 
-        {/* Histórico */}
         {history.length > 0 && (
           <Card className="border-border/50 bg-card/30">
             <CardHeader className="pb-3 pt-4">
@@ -208,7 +213,7 @@ export function EmailClassifier() {
         )}
       </div>
 
-      {/* Coluna Direita: Resultados */}
+      {/* Coluna Direita */}
       <div className="lg:col-span-2 space-y-6">
         {error && (
           <Alert variant="destructive">
@@ -225,15 +230,14 @@ export function EmailClassifier() {
             </div>
             <h3 className="text-lg font-medium text-foreground">Pronto para analisar</h3>
             <p className="text-sm text-muted-foreground mt-1 max-w-xs">
-              Envie um email ou arquivo PDF para ver a classificação da IA em tempo real.
+              Envie um email para ver a classificação da IA em tempo real.
             </p>
           </div>
         )}
 
         {result && (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6">
-            {/* Cartão Principal */}
-            <Card className="overflow-hidden border-border/50 bg-card/50 backdrop-blur-sm shadow-xl">
+            <Card className="overflow-hidden border-border/50 bg-card/50 backdrop-blur-sm shadow-xl relative">
               <div className={`h-1.5 w-full ${result.category === "Produtivo" ? "bg-success" : "bg-warning"}`} />
               <CardHeader className="pb-4">
                 <div className="flex items-start justify-between">
@@ -258,7 +262,7 @@ export function EmailClassifier() {
                   </div>
                 </div>
               </CardHeader>
-              <CardContent className="grid gap-4 md:grid-cols-3">
+              <CardContent className="grid gap-4 md:grid-cols-3 items-start">
                 <div className="rounded-lg bg-muted/30 p-3 border border-border/50">
                   <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Urgência</span>
                   <div className="flex items-center gap-2 mt-1">
@@ -269,20 +273,42 @@ export function EmailClassifier() {
                     <span className="font-semibold">{result.urgency}</span>
                   </div>
                 </div>
+                
                 <div className="rounded-lg bg-muted/30 p-3 border border-border/50">
                   <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Sentimento</span>
                   <div className="mt-1 font-semibold">{result.sentiment}</div>
                 </div>
-                <div className="rounded-lg bg-muted/30 p-3 border border-border/50">
-                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Ação</span>
-                  <div className="mt-1 font-semibold truncate" title={result.action_suggested}>
+                
+                {/* --- BOTÃO DE AÇÃO COM POPOVER --- */}
+                <div 
+                  className="relative rounded-lg bg-muted/30 p-3 border border-border/50 cursor-pointer transition-all hover:bg-muted/50 hover:border-primary/20 group select-none"
+                  onClick={() => setShowActionTooltip(!showActionTooltip)}
+                >
+                  <div className="flex justify-between items-start">
+                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Ação Sugerida</span>
+                    <Info className="h-3 w-3 text-muted-foreground/50 group-hover:text-primary transition-colors" />
+                  </div>
+                  {/* Texto cortado (Layout bonito) */}
+                  <div className="mt-1 font-semibold truncate text-sm">
                     {result.action_suggested}
                   </div>
+
+                  {/* O Balão Flutuante (Aparece ao clicar) */}
+                  {showActionTooltip && (
+                    <div className="absolute top-full right-0 mt-2 w-[280px] sm:w-[350px] z-50 p-4 rounded-xl border bg-popover text-popover-foreground shadow-2xl animate-in fade-in zoom-in-95 ring-1 ring-border">
+                       <div className="flex justify-between items-start mb-2">
+                          <span className="text-xs font-semibold text-primary uppercase">Texto Completo</span>
+                          <X className="h-3 w-3 cursor-pointer opacity-50 hover:opacity-100" />
+                       </div>
+                       <p className="text-sm leading-relaxed text-foreground">
+                         {result.action_suggested}
+                       </p>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
 
-            {/* Abas de Detalhes */}
             <Tabs defaultValue="response" className="w-full">
               <TabsList className="grid w-full grid-cols-2 bg-muted/30">
                 <TabsTrigger value="response">Sugestão de Resposta</TabsTrigger>

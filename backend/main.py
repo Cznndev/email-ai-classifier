@@ -28,14 +28,62 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# LISTA DE MODELOS PARA TENTAR (Nomes técnicos específicos para evitar 404)
-MODEL_VERSIONS = [
-    "gemini-1.5-flash-002",  # Versão estável mais nova
-    "gemini-1.5-flash-001",  # Versão estável anterior
-    "gemini-1.5-flash",      # Apelido padrão
-    "gemini-1.5-pro-002",    # Pro novo
-    "gemini-1.0-pro"         # Versão legada (tanque de guerra)
-]
+# --- VARIÁVEL GLOBAL PARA GUARDAR O MODELO QUE FUNCIONA ---
+# O servidor vai preencher isso assim que ligar
+ACTIVE_MODEL_NAME = None
+
+def get_available_model(api_key):
+    """
+    Pergunta ao Google quais modelos estão disponíveis para esta chave/região.
+    Retorna o nome técnico exato do primeiro modelo compatível.
+    """
+    print("🔍 Consultando lista de modelos disponíveis no Google...")
+    url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+    
+    try:
+        response = requests.get(url)
+        if response.status_code != 200:
+            print(f"⚠️ Erro ao listar modelos: {response.status_code} - {response.text}")
+            return "gemini-1.5-flash" # Fallback cego
+            
+        data = response.json()
+        models = data.get('models', [])
+        
+        # Procura um modelo que sirva para 'generateContent'
+        candidates = []
+        for m in models:
+            if 'generateContent' in m.get('supportedGenerationMethods', []):
+                name = m['name'].replace('models/', '') # Remove o prefixo 'models/'
+                candidates.append(name)
+                print(f"   - Encontrado: {name}")
+
+        # Prioridade de escolha (do mais leve para o mais pesado)
+        preferred_order = ['gemini-1.5-flash', 'gemini-1.5-flash-latest', 'gemini-1.0-pro', 'gemini-pro']
+        
+        # 1. Tenta achar um dos preferidos na lista real
+        for pref in preferred_order:
+            for cand in candidates:
+                if pref in cand:
+                    print(f"🏆 Modelo escolhido (Por preferência): {cand}")
+                    return cand
+        
+        # 2. Se não achar nenhum preferido, pega o primeiro da lista que seja 'gemini'
+        for cand in candidates:
+            if 'gemini' in cand:
+                print(f"⚠️ Modelo escolhido (Primeiro disponível): {cand}")
+                return cand
+                
+        return "gemini-1.5-flash" # Última esperança
+        
+    except Exception as e:
+        print(f"❌ Erro na conexão de listagem: {e}")
+        return "gemini-1.5-flash"
+
+# Inicializa o modelo ao ligar o servidor
+if API_KEY:
+    ACTIVE_MODEL_NAME = get_available_model(API_KEY)
+else:
+    ACTIVE_MODEL_NAME = "gemini-1.5-flash"
 
 def clean_json_string(text: str) -> str:
     text = re.sub(r'```json\s*', '', text)
@@ -46,13 +94,11 @@ def clean_json_string(text: str) -> str:
         text = text[start:end]
     return text.strip()
 
-def classify_with_http_retry(email_content: str, api_key: str):
-    """
-    Tenta vários modelos em sequência até um funcionar.
-    """
-    last_error = None
-    
+def classify_email_logic(email_content: str, api_key: str, model_name: str):
     headers = {"Content-Type": "application/json"}
+    
+    # URL dinâmica baseada no modelo descoberto
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
     
     prompt = f"""
     Analise o email e responda APENAS com JSON.
@@ -74,29 +120,13 @@ def classify_with_http_retry(email_content: str, api_key: str):
         "contents": [{"parts": [{"text": prompt}]}]
     }
     
-    # Loop de Tentativas
-    for model_name in MODEL_VERSIONS:
-        try:
-            print(f"🔄 Tentando conectar via HTTP no modelo: {model_name}...")
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-            
-            response = requests.post(url, headers=headers, json=payload, timeout=30)
-            
-            if response.status_code == 200:
-                print(f"✅ SUCESSO! Conectado ao modelo: {model_name}")
-                data = response.json()
-                return data["candidates"][0]["content"]["parts"][0]["text"]
-            
-            else:
-                print(f"⚠️ Falha no {model_name}: {response.status_code} - {response.text[:100]}...")
-                last_error = f"Erro {response.status_code}: {response.text}"
-                
-        except Exception as e:
-            print(f"⚠️ Erro de conexão no {model_name}: {e}")
-            last_error = str(e)
-            
-    # Se sair do loop, tudo falhou
-    raise Exception(f"Todas as tentativas falharam. Último erro: {last_error}")
+    print(f"🔄 Enviando para modelo: {model_name}...")
+    response = requests.post(url, headers=headers, json=payload, timeout=30)
+    
+    if response.status_code == 200:
+        return response.json()["candidates"][0]["content"]["parts"][0]["text"]
+    else:
+        raise Exception(f"Erro Google ({response.status_code}): {response.text}")
 
 @app.post("/api/parse-pdf")
 async def parse_pdf(file: UploadFile = File(...)):
@@ -115,12 +145,19 @@ async def parse_pdf(file: UploadFile = File(...)):
 @app.post("/api/classify", response_model=ClassifyResponse)
 async def classify_email(request: ClassifyRequest):
     try:
-        print(f"\n--- 📩 Processando Email (Modo Multi-Modelo) ---")
+        print(f"\n--- 📩 Processando Email ---")
         
-        raw_response = classify_with_http_retry(request.emailContent, API_KEY)
+        # Usa o modelo que descobrimos no início, ou tenta descobrir de novo se falhou antes
+        global ACTIVE_MODEL_NAME
+        if not ACTIVE_MODEL_NAME:
+            ACTIVE_MODEL_NAME = get_available_model(API_KEY)
+            
+        raw_response = classify_email_logic(request.emailContent, API_KEY, ACTIVE_MODEL_NAME)
         
         cleaned_text = clean_json_string(raw_response)
         json_result = json.loads(cleaned_text)
+        
+        print(f"✅ Sucesso! Categoria: {json_result.get('category')}")
         
         return ClassifyResponse(
             success=True,
@@ -129,7 +166,11 @@ async def classify_email(request: ClassifyRequest):
         )
 
     except Exception as e:
-        print(f"❌ ERRO FATAL: {e}")
+        print(f"❌ ERRO: {e}")
+        # Se der erro 404 mesmo com o modelo listado, tenta resetar a descoberta
+        if "404" in str(e):
+             print("⚠️ Erro 404 detectado. Forçando nova busca de modelos na próxima requisição.")
+             ACTIVE_MODEL_NAME = None 
         raise HTTPException(status_code=500, detail=f"Erro interno: {str(e)}")
 
 if __name__ == "__main__":

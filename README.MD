@@ -66,3 +66,34 @@ pip install -r requirements.txt
 
 # Inicie o servidor
 python main.py
+O servidor iniciará em http://localhost:8000
+
+2. Configuração do Frontend (Interface)
+Bash
+
+# Em um novo terminal, volte para a raiz do projeto (se estiver na pasta backend)
+cd ..
+
+# Instale as dependências do Node.js
+npm install
+
+# Inicie o servidor de desenvolvimento
+npm run dev
+Acesse a aplicação em http://localhost:3000
+
+🔒 Segurança
+Este projeto utiliza variáveis de ambiente para proteger chaves sensíveis.
+
+O arquivo .env contendo a GOOGLE_API_KEY não é enviado para o GitHub.
+
+Utilize o arquivo .env.example como referência para criar sua própria configuração localmente.
+
+🧪 Decisões Técnicas
+Google Gemini 1.5 Flash: Escolhido por ser um modelo leve, rápido e com excelente janela de contexto, ideal para classificação de texto em tempo real sem custos elevados.
+
+FastAPI: Utilizado pela sua performance (assíncrona) e pela facilidade de criar documentação automática, além de ser o padrão de mercado para microsserviços de IA em Python.
+
+Next.js 14: Garante uma interface reativa, otimizada e moderna, com renderização do lado do servidor (SSR) para melhor performance.
+
+👨‍💻 Autor
+Desenvolvido por Caio Higino De Oliveira

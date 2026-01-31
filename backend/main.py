@@ -18,6 +18,10 @@ load_dotenv()
 API_KEY = os.getenv("GOOGLE_API_KEY")
 
 if not API_KEY:
+    # Tenta pegar do ambiente do sistema (caso o .env falhe no Render)
+    API_KEY = os.environ.get("GOOGLE_API_KEY")
+
+if not API_KEY:
     print("❌ ERRO CRÍTICO: Variável GOOGLE_API_KEY não encontrada.")
     raise ValueError("A chave de API não foi configurada!")
 
@@ -33,16 +37,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-model = genai.GenerativeModel('gemini-1.5-flash')
+# MUDANÇA 1: Usando o modelo mais estável (gemini-pro)
+model = genai.GenerativeModel('gemini-pro')
 
-# Função auxiliar para limpar o JSON que a IA devolve
 def clean_json_string(text: str) -> str:
-    # Remove blocos de código markdown (```json ... ```)
+    """Limpa a resposta da IA para garantir que seja um JSON válido"""
+    # Remove crases de markdown
     text = re.sub(r'```json\s*', '', text)
     text = re.sub(r'```\s*', '', text)
+    # Remove qualquer texto antes da primeira { ou depois da última }
+    start = text.find('{')
+    end = text.rfind('}') + 1
+    if start != -1 and end != -1:
+        text = text[start:end]
     return text.strip()
 
-# --- ROTA 1: LER PDF ---
 @app.post("/api/parse-pdf")
 async def parse_pdf(file: UploadFile = File(...)):
     try:
@@ -58,32 +67,40 @@ async def parse_pdf(file: UploadFile = File(...)):
         print(f"❌ Erro PDF: {e}")
         raise HTTPException(status_code=500, detail="Erro ao ler PDF")
 
-# --- ROTA 2: CLASSIFICAR EMAIL ---
 @app.post("/api/classify", response_model=ClassifyResponse)
 async def classify_email(request: ClassifyRequest):
     try:
-        print(f"\n--- 📩 Processando Email ---")
+        print(f"\n--- 📩 Processando Email (Modelo: gemini-pro) ---")
         
+        # MUDANÇA 2: Prompt reforçado para garantir JSON (já que tiramos a config automática)
         prompt = f"""
-        Analise o email abaixo e responda APENAS com um JSON.
+        Você é um classificador de emails corporativos.
+        Analise o email abaixo e responda ESTRITAMENTE com um objeto JSON.
+        NÃO escreva nada além do JSON. Não use Markdown.
         
-        Classifique como: 'Produtivo' (trabalho, projetos, urgente) ou 'Improdutivo' (spam, pessoal, newsletters).
-        
-        EMAIL:
+        O JSON deve seguir exatamente este formato:
+        {{
+            "category": "Produtivo" ou "Improdutivo",
+            "confidence": 0.9,
+            "urgency": "Alta" ou "Média" ou "Baixa",
+            "sentiment": "Positivo" ou "Neutro" ou "Negativo",
+            "summary": "Resumo em 1 frase",
+            "action_suggested": "Ação recomendada",
+            "entities": ["Nome", "Empresa", "Data"],
+            "draft_response": "Sugestão de resposta curta e formal"
+        }}
+
+        EMAIL PARA ANALISAR:
         {request.emailContent}
         """
 
-        # Configuração para forçar JSON e reduzir bloqueios de segurança
-        response = model.generate_content(
-            prompt,
-            generation_config=genai.GenerationConfig(
-                response_mime_type="application/json",
-                response_schema=ClassificationResult
-            )
-        )
+        # Chamada simplificada (sem generation_config que quebra o gemini-pro)
+        response = model.generate_content(prompt)
 
-        # Limpeza e Conversão do Resultado
+        # Limpeza e Conversão
         cleaned_text = clean_json_string(response.text)
+        print(f"🤖 Resposta da IA: {cleaned_text[:50]}...") # Log para debug
+        
         json_result = json.loads(cleaned_text)
         
         print(f"✅ Classificado como: {json_result.get('category', 'Desconhecido')}")
@@ -96,9 +113,8 @@ async def classify_email(request: ClassifyRequest):
 
     except Exception as e:
         print(f"❌ ERRO NA CLASSIFICAÇÃO: {e}")
-        # Se a IA bloquear o conteúdo (comum em spam), devolvemos um erro legível
         if "429" in str(e):
-            raise HTTPException(status_code=429, detail="Muitas requisições. Tente de novo em 1 minuto.")
+            raise HTTPException(status_code=429, detail="Muitas requisições. Aguarde.")
         raise HTTPException(status_code=500, detail=f"Erro interno: {str(e)}")
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@ import datetime
 import json
 import io
 import re
-import requests  # <--- NOVA BIBLIOTECA
+import requests
 import uvicorn
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,8 +28,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# LISTA DE MODELOS PARA TENTAR (Nomes técnicos específicos para evitar 404)
+MODEL_VERSIONS = [
+    "gemini-1.5-flash-002",  # Versão estável mais nova
+    "gemini-1.5-flash-001",  # Versão estável anterior
+    "gemini-1.5-flash",      # Apelido padrão
+    "gemini-1.5-pro-002",    # Pro novo
+    "gemini-1.0-pro"         # Versão legada (tanque de guerra)
+]
+
 def clean_json_string(text: str) -> str:
-    # Limpa marcadores de markdown que o Gemini adora colocar
     text = re.sub(r'```json\s*', '', text)
     text = re.sub(r'```\s*', '', text)
     start = text.find('{')
@@ -38,69 +46,57 @@ def clean_json_string(text: str) -> str:
         text = text[start:end]
     return text.strip()
 
-# --- CLASSIFICAÇÃO VIA HTTP DIRETO (SEM SDK) ---
-def classify_with_http(email_content: str, api_key: str):
+def classify_with_http_retry(email_content: str, api_key: str):
     """
-    Faz a chamada direta para a API REST do Google.
-    Isso evita erros de versão da biblioteca Python (404/429).
+    Tenta vários modelos em sequência até um funcionar.
     """
-    # URL oficial da API REST
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    last_error = None
     
-    headers = {
-        "Content-Type": "application/json"
-    }
+    headers = {"Content-Type": "application/json"}
     
     prompt = f"""
-    Analise o email abaixo e responda APENAS com um JSON válido.
-    Não use Markdown. Não explique nada. Apenas o JSON.
-    
-    Formato do JSON:
+    Analise o email e responda APENAS com JSON.
     {{
         "category": "Produtivo" ou "Improdutivo",
         "confidence": 0.9,
         "urgency": "Alta" ou "Média" ou "Baixa",
         "sentiment": "Positivo" ou "Neutro" ou "Negativo",
-        "summary": "Resumo em 1 frase",
-        "action_suggested": "Ação recomendada",
-        "entities": ["Nome", "Empresa", "Data"],
-        "draft_response": "Sugestão de resposta"
+        "summary": "Resumo rápido",
+        "action_suggested": "Ação",
+        "entities": ["Entidade1"],
+        "draft_response": "Resposta"
     }}
-
     EMAIL:
     {email_content}
     """
     
     payload = {
-        "contents": [{
-            "parts": [{"text": prompt}]
-        }]
+        "contents": [{"parts": [{"text": prompt}]}]
     }
     
-    print(f"🔄 Enviando requisição HTTP direta para o Google...")
-    response = requests.post(url, headers=headers, json=payload)
-    
-    if response.status_code != 200:
-        print(f"⚠️ Erro na API HTTP: {response.status_code} - {response.text}")
-        # Tenta fallback para o modelo Pro se o Flash falhar
-        if response.status_code == 404:
-             print("🔄 Tentando modelo alternativo (gemini-pro)...")
-             url_backup = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={api_key}"
-             response = requests.post(url_backup, headers=headers, json=payload)
-             if response.status_code != 200:
-                 raise Exception(f"Google API Error: {response.text}")
-        else:
-             raise Exception(f"Google API Error: {response.text}")
-
-    data = response.json()
-    
-    try:
-        # Extrai o texto da resposta complexa do Google
-        raw_text = data["candidates"][0]["content"]["parts"][0]["text"]
-        return raw_text
-    except (KeyError, IndexError) as e:
-        print(f"❌ Erro ao ler JSON do Google: {data}")
-        raise Exception("Resposta inválida da API do Google")
+    # Loop de Tentativas
+    for model_name in MODEL_VERSIONS:
+        try:
+            print(f"🔄 Tentando conectar via HTTP no modelo: {model_name}...")
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+            
+            response = requests.post(url, headers=headers, json=payload, timeout=30)
+            
+            if response.status_code == 200:
+                print(f"✅ SUCESSO! Conectado ao modelo: {model_name}")
+                data = response.json()
+                return data["candidates"][0]["content"]["parts"][0]["text"]
+            
+            else:
+                print(f"⚠️ Falha no {model_name}: {response.status_code} - {response.text[:100]}...")
+                last_error = f"Erro {response.status_code}: {response.text}"
+                
+        except Exception as e:
+            print(f"⚠️ Erro de conexão no {model_name}: {e}")
+            last_error = str(e)
+            
+    # Se sair do loop, tudo falhou
+    raise Exception(f"Todas as tentativas falharam. Último erro: {last_error}")
 
 @app.post("/api/parse-pdf")
 async def parse_pdf(file: UploadFile = File(...)):
@@ -119,16 +115,12 @@ async def parse_pdf(file: UploadFile = File(...)):
 @app.post("/api/classify", response_model=ClassifyResponse)
 async def classify_email(request: ClassifyRequest):
     try:
-        print(f"\n--- 📩 Processando Email (Modo HTTP Direto) ---")
+        print(f"\n--- 📩 Processando Email (Modo Multi-Modelo) ---")
         
-        # Chama nossa função nova
-        raw_response = classify_with_http(request.emailContent, API_KEY)
+        raw_response = classify_with_http_retry(request.emailContent, API_KEY)
         
-        # Limpa e converte
         cleaned_text = clean_json_string(raw_response)
         json_result = json.loads(cleaned_text)
-        
-        print(f"✅ Sucesso! Categoria: {json_result.get('category')}")
         
         return ClassifyResponse(
             success=True,

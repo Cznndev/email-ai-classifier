@@ -45,7 +45,13 @@ Essa solução foi desenvolvida para demonstrar habilidades práticas em **IA ge
 
 ## 🚀 Demonstração
 
-> 🖼️ Inserir GIF ou screenshot da interface aqui (opcional, mas recomendado para impacto visual).
+<p align="center">
+  <img src="public/demonstracao2.jpg" alt="Demonstração da aplicação EmailAI" width="800"/>
+</p>
+
+<p align="center">
+  <img src="public/demonstracao3.png" alt="Classificação de emails com IA" width="800"/>
+</p>
 
 ---
 
